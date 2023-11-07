@@ -1,0 +1,138 @@
+import http.client
+import json
+from urllib.parse import quote
+import os
+import requests
+
+# Set your Airtable API token and base ID here
+AIRTABLE_TOKEN = 'patgSLREFUeO3VLCf.92de7fc306d56c3e735f5316a566b40e9626be2fbc8d95a0076c82249a895877'
+AIRTABLE_BASE_ID = 'appudOzhKbBzX0CIi'
+
+# Specify the table name
+AIRTABLE_TABLE_NAME = 'APIs'
+
+# Define the fields you want to retrieve
+FIELDS_TO_RETRIEVE = ["Name", "Key", "Status", "Rapid API Login", "Link to Documentation"]
+
+AIRTABLE_URL = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{AIRTABLE_TABLE_NAME}"
+
+def get_api_keys(endpoint_host):
+    """Get 'Key' values for 'Active' records from Airtable with 'Endpoint Host' filter."""
+    headers = {
+        'Authorization': f'Bearer {AIRTABLE_TOKEN}',
+        'Content-Type': 'application/json'
+    }
+
+    # Define the filter formula to include both "Status" and "Endpoint Host" conditions
+    filter_formula = f"AND(Status='Active', {{Endpoint Host}}='{endpoint_host}')"
+
+    params = {
+        "fields": FIELDS_TO_RETRIEVE,
+        "filterByFormula": filter_formula
+    }
+
+    try:
+        response = requests.get(AIRTABLE_URL, headers=headers, params=params)
+
+        if response.status_code == 200:
+            data = response.json()
+            records = data.get('records', [])
+            
+            # Filter records where "Status" is "Active" and "Endpoint Host" is as specified
+            active_keys = [record['fields']['Key'] for record in records]
+            
+            return active_keys
+        else:
+            print("Failed to retrieve API records. Status code:", response.status_code)
+            print("Response content:", response.content)
+            return []
+    except Exception as e:
+        print("An error occurred:", str(e))
+        return []
+
+def get_property_info(zpid):
+    # API endpoint for getting property information
+    url = "https://zillow-zestimate.p.rapidapi.com/get-property"
+    
+    # Get the API key from Airtable with the specified "Endpoint Host" filter
+    api_keys = get_api_keys("zillow-zestimate.p.rapidapi.com")
+    
+    if not api_keys:
+        print("No active API keys found.")
+        return None
+    
+    # Use the first API key from Airtable (you can modify this logic as needed)
+    api_key = api_keys[0]
+    
+    # Headers for the API request
+    headers = {
+        "X-RapidAPI-Key": api_key,
+        "X-RapidAPI-Host": "zillow-zestimate.p.rapidapi.com",
+    }
+    
+    # Query parameters for the API request, including the Zillow Property ID (zpid)
+    querystring = {"zpid": zpid}
+
+    # Sending a GET request to the API endpoint with the headers and query parameters
+    response = requests.get(url, headers=headers, params=querystring)
+    
+    try:
+        response.raise_for_status()
+        # Parsing the response data as JSON
+        data = response.json()
+        # Extracting the property information from the JSON data
+        property_info = data.get("property", {})
+        # Extracting the address information from the property information
+        address = property_info.get("address", {})
+        # Extracting the attribution information from the property information
+        attribution_info = property_info.get("attributionInfo", {})
+    
+        # Creating a dictionary to store the property information
+        info_dict = {
+                'Street Address': address.get('streetAddress'),
+                'City': address.get('city'),
+                'State': address.get('state'),
+                'Zipcode': address.get('zipcode'),
+                'Latitude': property_info.get('latitude'),
+                'Longitude': property_info.get('longitude'),
+                'Home Status': property_info.get('homeStatus'),
+                'Property Type': property_info.get('propertyTypeDimension'),
+                'Listing Type': property_info.get('listingTypeDimension'),
+                'Lot Size': property_info.get('lotSize'),
+                'Price': property_info.get('price'),
+                'Living Area': property_info.get('livingArea'),
+                'Living Area Units': property_info.get('livingAreaUnitsShort'),
+                'HDP Type': property_info.get('hdpTypeDimension'),
+                'Bedrooms': property_info.get('bedrooms') if property_info.get('bedrooms') is not None else 'Not specified',
+                'Bathrooms': property_info.get('bathrooms') if property_info.get('bathrooms') is not None else 'Not specified',
+                'Zestimate': property_info.get('zestimate'),
+                'Rent Estimate': property_info.get('rentZestimate'),
+                'Year Built': property_info.get('yearBuilt'),
+                'Listing Description': property_info.get('description'),
+                'MLS ID': property_info.get('mlsid'),
+                'Days on Zillow': property_info.get('daysOnZillow'),
+                'ZPID': property_info.get('zpid'),
+                'Agent Phone Number': attribution_info.get('agentPhoneNumber'),
+                'Agent Name': attribution_info.get('agentName'),
+                'Agent Email': attribution_info.get('agentEmail'),
+                'Home Type': property_info.get('homeType')
+        }
+    
+        # Returning the property information dictionary
+        return info_dict
+    except requests.exceptions.HTTPError as http_err:
+        print(f"HTTP error occurred: {http_err}")
+    except Exception as e:
+        print(f"An error occurred: {str(e)}")
+    
+    return None
+
+# Getting the Zillow Property ID from the input data
+zpid = input_data.get("zpid")
+
+# Calling the function to get the property information
+info_dict = get_property_info(zpid)
+# Creating an output dictionary with the Zillow Property ID and the property information
+output = {"zpid": zpid, "property_info": info_dict}
+# Printing the output
+print(output)

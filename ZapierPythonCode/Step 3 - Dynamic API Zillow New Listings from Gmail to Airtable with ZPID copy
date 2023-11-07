@@ -1,0 +1,111 @@
+import http.client
+import json
+from urllib.parse import quote
+import os
+import requests
+
+# Set your Airtable API token and base ID here
+AIRTABLE_TOKEN = 'patgSLREFUeO3VLCf.92de7fc306d56c3e735f5316a566b40e9626be2fbc8d95a0076c82249a895877'
+AIRTABLE_BASE_ID = 'appudOzhKbBzX0CIi'
+
+# Specify the table name
+AIRTABLE_TABLE_NAME = 'APIs'
+
+# Define the fields you want to retrieve
+FIELDS_TO_RETRIEVE = ["Name", "Key", "Status", "Rapid API Login", "Link to Documentation"]
+
+# Define the additional filter value for "Endpoint Host"
+FILTER_ENDPOINT_HOST = 'zillow-com1.p.rapidapi.com'
+
+AIRTABLE_URL = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{AIRTABLE_TABLE_NAME}"
+
+def get_api_keys(endpoint_host):
+    """Get 'Key' values for 'Active' records from Airtable with 'Endpoint Host' filter."""
+    headers = {
+        'Authorization': f'Bearer {AIRTABLE_TOKEN}',
+        'Content-Type': 'application/json'
+    }
+
+    # Define the filter formula to include both "Status" and "Endpoint Host" conditions
+    filter_formula = f"AND(Status='Active', {{Endpoint Host}}='{endpoint_host}')"
+
+    params = {
+        "fields": FIELDS_TO_RETRIEVE,
+        "filterByFormula": filter_formula
+    }
+
+    try:
+        response = requests.get(AIRTABLE_URL, headers=headers, params=params)
+
+        if response.status_code == 200:
+            data = response.json()
+            records = data.get('records', [])
+            
+            # Filter records where "Status" is "Active" and "Endpoint Host" is as specified
+            active_keys = [record['fields']['Key'] for record in records]
+            
+            return active_keys
+        else:
+            print("Failed to retrieve API records. Status code:", response.status_code)
+            print("Response content:", response.content)
+            return []
+    except Exception as e:
+        print("An error occurred:", str(e))
+        return []
+
+def get_zpid(property_address):
+    # Encode the property address for the URL
+    encoded_address = quote(property_address)
+    
+    # Define the API endpoint and parameters
+    endpoint = f"/propertyExtendedSearch?location={encoded_address}&home_type=Houses"
+    
+    # Get the API key from Airtable with the specified "Endpoint Host" filter
+    api_keys = get_api_keys(FILTER_ENDPOINT_HOST)
+    
+    if not api_keys:
+        print("No active API keys found.")
+        return None
+    
+    # Use the first API key from Airtable (you can modify this logic as needed)
+    api_key = api_keys[0]
+    
+    # API connection setup
+    conn = http.client.HTTPSConnection(FILTER_ENDPOINT_HOST)
+    headers = {
+        'X-RapidAPI-Key': api_key,
+        'X-RapidAPI-Host': FILTER_ENDPOINT_HOST
+    }
+    
+    print("Sending GET request to Zillow API with API key:", api_key)
+    
+    # Send the GET request to the API
+    conn.request("GET", endpoint, headers=headers)
+    res = conn.getresponse()
+    data = res.read()
+    
+    # Parse the JSON response
+    response_data = json.loads(data.decode("utf-8"))
+    
+    # Check if the response contains a ZPID
+    if "zpid" in response_data:
+        zpid = response_data["zpid"]
+        return zpid
+    else:
+        print("ZPID not found in the response data.")
+        return None
+
+# Get the property_address from the input data provided by Zapier
+property_address = input_data.get('property_address')
+
+if property_address:
+    print("Property Address:", property_address)
+    # Get the ZPID
+    zpid = get_zpid(property_address)
+    print("ZPID:", zpid)
+else:
+    print("No property address provided.")
+    zpid = None
+
+# Output the ZPID, which will be passed to the next step in your Zap
+output = {"zpid": zpid}
